@@ -1,0 +1,2 @@
+# cwic
+CoreWeave Intelligent CLI
