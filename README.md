@@ -22,7 +22,7 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
 - **Cluster Operations**: List, manage, and generate kubeconfigs for CoreWeave Kubernetes clusters
 - **Node Management**: Comprehensive node operations including drain, cordon, reboot, and monitoring
 - **SUNK Cluster Interaction**: Seamlessly interact with SUNK (Slurm) clusters
-- **Object Storage**: Complete CoreWeave AI Object Storage (CAIOS) management capabilities
+- **Object Storage**: Complete CoreWeave Object Storage (`cwobject`) management capabilities
 - **CoreWeave Dashboards**: Link straight into the relevant dashboard, pre-filtered, in CoreWeave's managed Grafana
 
 ## Table of Contents
@@ -49,7 +49,7 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
       - [Cluster Operations](#cluster-operations)
       - [Node Management](#node-management)
       - [Job Management](#job-management)
-    - [Object Storage (CAIOS)](#object-storage-caios)
+    - [Object Storage (cwobject)](#object-storage-cwobject)
   - [Configuration](#configuration)
   - [Development](#development)
     - [Prerequisites](#prerequisites)
@@ -114,7 +114,7 @@ To get a token:
 This CW token will be used for different functionality throughout `cwic` including but not limited to:
  - kubeconfig generation
  - metrics querying
- - CAIOS interactions
+- `cwobject` interactions
  - CW API interactions (CKS cluster listing)
 
 ### 2. Verify Authentication
@@ -374,35 +374,36 @@ Job information includes:
 - **Resource Allocation**: Allocated CPUs, GPUs, and node count
 - **Node Assignment**: List of specific nodes allocated to the job
 
-### Object Storage (CAIOS)
+### Object Storage (cwobject)
 
 Manage CoreWeave AI Object Storage resources.
 
 ```bash
 # List buckets
-cwic caios list
+cwic cwobject list
 
 # Create bucket
-cwic caios mb <bucket-name>
+cwic cwobject mb <bucket-name>
 
 # Remove bucket
-cwic caios rb <bucket-name>
+cwic cwobject rb <bucket-name>
 
 # Bucket information
-cwic caios bucket info <bucket-name>
+cwic cwobject bucket describe <bucket-name>
 
 # Move objects
-cwic caios move <source> <destination>
+cwic cwobject move <source> <destination>
 
 # Access token management
-cwic caios token create
-cwic caios token list
-cwic caios token revoke <token-id>
+cwic cwobject token create --name <key-name> --duration <seconds>
+cwic cwobject token get
+cwic cwobject token get --name <key-name>
+cwic cwobject token get --cwic-only
 
 # Policy management
-cwic caios policy create <policy-file>
-cwic caios policy list
-cwic caios policy delete <policy-name>
+cwic cwobject policy create --file <policy-file>
+cwic cwobject policy get
+cwic cwobject policy delete --name <policy-name>
 ```
 
 **Features:**
