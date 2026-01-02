@@ -50,6 +50,7 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
       - [Node Management](#node-management)
       - [Job Management](#job-management)
     - [Object Storage (cwobject)](#object-storage-cwobject)
+    - [NodePool Management](#nodepool-management)
   - [Configuration](#configuration)
   - [Development](#development)
     - [Prerequisites](#prerequisites)
@@ -411,6 +412,19 @@ cwic cwobject policy delete --name <policy-name>
 - Access control management
 - Policy-based permissions
 - Token lifecycle management
+
+### NodePool Management
+
+Manage CoreWeave NodePool resources.
+
+```bash
+# Apply pending node profile to NodePool 
+cwic nodepool upgrade <nodepool-name>
+
+```
+
+**Features:**
+- Manage staging and rollback of Node configurations
 
 ## Configuration
 
