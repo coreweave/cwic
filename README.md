@@ -421,6 +421,12 @@ Manage CoreWeave NodePool resources.
 # Apply pending node profile to NodePool 
 cwic nodepool upgrade <nodepool-name>
 
+# Rollback to the immediate prior node profile from the current active profile
+cwic nodepool rollback <nodepool-name>
+
+# Rollback to the specified nodeprofile
+cwic nodepool rollback <nodepool-name> <nodeprofile-name>
+
 ```
 
 **Features:**
