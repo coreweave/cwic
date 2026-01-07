@@ -427,6 +427,15 @@ cwic nodepool rollback <nodepool-name>
 # Rollback to the specified nodeprofile
 cwic nodepool rollback <nodepool-name> <nodeprofile-name>
 
+# View Nodes associated with nodepool
+cwic nodepool node get <nodepool-name>
+
+# View only nodes requiring a reconfigure reboot that are associated with the nodepool
+cwic nodepool node get <nodepool-name> --requiring-reconfiguration
+
+# View only supplied node names within the nodepool
+cwic nodepool node get <nodepool-name> <list-of-space-separated-nodes>
+
 ```
 
 **Features:**
