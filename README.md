@@ -149,19 +149,26 @@ cwic cluster auth CLUSTER_NAME
 cwic cluster auth all
 ```
 
+> [!IMPORTANT]
+> Kubernetes-based cwic commands (`node`, `sunk`, `nodepool`) require this kubeconfig.
+> If you created a new kubeconfig file (not appended to default), set the KUBECONFIG environment variable:
+> ```bash
+> export KUBECONFIG=/path/to/your/kubeconfig
+> ```
+
 ### 4. Basic Usage
 
 Once authenticated, you can start managing your CoreWeave resources:
 
 ```bash
-# List nodes in your cluster
+# List nodes in your cluster (requires kubeconfig from step 3)
 cwic node get
 
-# Check cluster status
+# Check cluster status (requires kubeconfig from step 3)
 cwic sunk cluster describe
 
-# List storage buckets
-cwic caios list
+# List storage buckets (requires only CW auth token, no kubeconfig needed)
+cwic cwobject list
 ```
 
 ## Commands
