@@ -443,6 +443,14 @@ cwic nodepool node get <nodepool-name> --requiring-reconfiguration
 # View only supplied node names within the nodepool
 cwic nodepool node get <nodepool-name> <list-of-space-separated-nodes>
 
+# Trigger a rollout of a staged node configuration 
+# For use with the RolloutOnCommand Reconfiguration Strategy
+cwic nodepool rollout start <nodepool-name>
+
+# Pauses an active node config rollout. Nodes will stop 
+# reconfiguring until the start command is run again  
+cwic nodepool rollout stop <nodepool-name> 
+
 ```
 
 **Features:**
