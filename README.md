@@ -34,7 +34,6 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
     - [Pre-built Binaries](#pre-built-binaries)
       - [Linux](#linux)
       - [MacOS](#macos)
-    - [From Source](#from-source)
     - [Auto-Update](#auto-update)
   - [Getting Started](#getting-started)
     - [1. Authentication](#1-authentication)
@@ -52,10 +51,6 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
     - [Object Storage (cwobject)](#object-storage-cwobject)
     - [NodePool Management](#nodepool-management)
   - [Configuration](#configuration)
-  - [Development](#development)
-    - [Prerequisites](#prerequisites)
-    - [Testing](#testing)
-    - [Code Style](#code-style)
 
 ## Installation
 
@@ -73,16 +68,6 @@ gh release download -R coreweave/cwic -p "cwic_$(uname)_$(uname -m).tar.gz" -O -
 
 ```bash
 gh release download -R coreweave/cwic -p "cwic_$(uname)_$(uname -m).tar.gz" -O - --clobber | tar zxf - cwic && mv cwic /usr/local/bin
-```
-
-### From Source
-
-Requires Go 1.24.1 or later:
-
-```bash
-git clone https://github.com/coreweave/cwic.git
-cd cwic
-make build
 ```
 
 ### Auto-Update
@@ -453,29 +438,3 @@ cwic nodepool node get <nodepool-name> <list-of-space-separated-nodes>
 CWIC stores configuration in your home directory:
 
 - **Linux/macOS**: `~/.cwic/config.json`
-
-## Development
-
-### Prerequisites
-
-- Go 1.24.1 or later
-- Make
-
-### Testing
-
-```bash
-# Run all tests
-make test
-```
-
-### Code Style
-
-This project follows standard Go conventions:
-
-```bash
-# Run linter
-make lint
-
-# Fix linting issues
-make lint-fix
-```
