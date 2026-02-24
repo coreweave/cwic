@@ -384,23 +384,79 @@ Job information includes:
 
 ### Object Storage (cwobject)
 
-Manage CoreWeave AI Object Storage resources.
+Manage CoreWeave AI Object Storage resources using the S3-compatible API.
+
+#### Configuration
+
+Before using `cwobject` commands, you need to configure your environment with access credentials. You can use either an s3cfg file or environment variables.
+
+When using an `s3cfg` file that follows the `s3cmd` format, you would create the file at `~/.s3cfg`, or alternatively use the `--config` flag to specify a different path. The content should look like this:
+
+```bash
+[default]
+# Your credentials
+access_key = <your-access-key-id>
+secret_key = <your-secret-access-key>
+
+# New CoreWeave Global Endpoint
+host_base = cwobject.com
+host_bucket = %(bucket)s.cwobject.com
+
+# Connection settings
+use_https = True
+check_ssl_certificate = True
+check_ssl_hostname = True
+
+# Storage location default (using us-east-13a as an example, but should be set to your CoreWeave zone)
+bucket_location = us-east-13a
+
+# Interface settings
+human_readable_sizes = True
+website_endpoint = http://%(bucket)s.cwobject.com/
+
+```bash
+# Step 1: Create an access key (if you don't have one)
+cwic cwobject token create --name my-access-key --duration 3600
+
+# Step 2: Set environment variables with your credentials
+export AWS_ACCESS_KEY_ID=<your-access-key-id>
+export AWS_SECRET_ACCESS_KEY=<your-secret-access-key>
+export AWS_ENDPOINT_URL=https://cwobject.com  # or https://bucket.cwobject.com
+export AWS_REGION=EU-SOUTH-03B  # Your CoreWeave zone - required for bucket creation
+```
+
+**Note:** 
+- The endpoint URL can be either:
+  - Bucket-specific: `https://your-bucket.cwobject.com` (automatically normalized to base endpoint)
+  - Base endpoint: `https://cwobject.com` (recommended for listing all buckets)
+  - Internal (from within CKS clusters): `http://cwlota.com` (HTTP-only)
+- `AWS_REGION` should be set to your CoreWeave zone (e.g., `EU-SOUTH-03B`). It is **required** when creating new buckets (`mb` command) as the `LocationConstraint`. Other operations (list, get, move, delete) work without it.
+- Newly created buckets may take up to 60 seconds to become available for operations due to zone routing propagation.
+
+#### Usage
 
 ```bash
 # List buckets
 cwic cwobject list
 
+# List objects in a bucket
+cwic cwobject list s3://my-bucket/
+
 # Create bucket
 cwic cwobject mb <bucket-name>
 
-# Remove bucket
+# Remove bucket (empty buckets only)
 cwic cwobject rb <bucket-name>
+
+# Force remove bucket (deletes all objects first)
+cwic cwobject rb --force <bucket-name>
 
 # Bucket information
 cwic cwobject bucket describe <bucket-name>
+cwic cwobject bucket describe --all  # describe all buckets
 
-# Move objects
-cwic cwobject move <source> <destination>
+# Move objects between buckets
+cwic cwobject move s3://source-bucket/object s3://dest-bucket/object
 
 # Access token management
 cwic cwobject token create --name <key-name> --duration <seconds>
