@@ -25,6 +25,7 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
 - **Node Management**: Comprehensive node operations including drain, cordon, reboot, and monitoring
 - **SUNK Cluster Interaction**: Seamlessly interact with SUNK (Slurm) clusters
 - **Object Storage**: Complete CoreWeave Object Storage (`cwobject`) management capabilities
+- **Container Registry**: Manage CWCR namespaces, manifests, tags, referrers, and lifecycle operations
 - **CoreWeave Dashboards**: Link straight into the relevant dashboard, pre-filtered, in CoreWeave's managed Grafana
 
 ## Table of Contents
@@ -52,6 +53,7 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
       - [Node Management](#node-management)
       - [Job Management](#job-management)
     - [Object Storage (cwobject)](#object-storage-cwobject)
+    - [Container Registry](#container-registry)
     - [NodePool Management](#nodepool-management)
   - [Configuration](#configuration)
   - [Development](#development)
@@ -128,6 +130,12 @@ Check your authentication status:
 # Check current user/organization
 cwic auth whoami
 
+# Include group and role details
+cwic auth whoami -o wide
+
+# Inspect the complete principal as structured data
+cwic auth whoami -o json
+
 # Verify access by listing clusters
 cwic cluster get
 ```
@@ -179,6 +187,11 @@ cwic cwobject list
 
 Manage your CoreWeave authentication credentials.
 
+The `whoami` command queries the CoreWeave WhoAmI service and translates its permissions into the role names used by CoreWeave access policies.
+Its default table shows the principal UID and organization ID; `wide` adds groups and roles. 
+JSON and YAML include the same identity details and identify permissions without a known role label under `unrecognized_permissions`; `name` outputs only the principal UID. 
+Policies can contain arbitrary role bundles, so the flattened WhoAmI response cannot identify which named policies granted the roles.
+
 ```bash
 # Interactive login (opens browser)
 cwic auth login
@@ -192,6 +205,14 @@ cwic auth login <token> -n "Production"
 
 # Check current authentication status
 cwic auth whoami
+
+# Include group and role details
+cwic auth whoami -o wide
+
+# Script-friendly principal output
+cwic auth whoami -o json
+cwic auth whoami -o yaml
+cwic auth whoami -o name
 
 # Switch between authenticated accounts
 cwic auth switch [organization]
@@ -223,7 +244,12 @@ cwic auth switch org-id-456
 
 # Check which account you're currently using
 cwic auth whoami
-# Output: Currently authenticated as: Production (org-id-123)
+# Output:
+# UID           ORG ID
+# principal-1   org-id-123
+
+# Include groups and roles
+cwic auth whoami -o wide
 ```
 
 ### Cluster Management
@@ -477,6 +503,59 @@ cwic cwobject policy delete --name <policy-name>
 - Access control management
 - Policy-based permissions
 - Token lifecycle management
+
+### Container Registry
+
+Manage CoreWeave Container Registry resources. Registry commands use the active CWIC authentication token and support `table`, `json`, `yaml`, and `name` output. 
+List commands automatically retrieve every page, and commands that take targets support multiple arguments or newline-delimited stdin.
+
+See the [registry command guide](cmd/registry/README.md) for the complete command surface, reference syntax, login behavior, pipelines, batch operations, idempotent retries, and deletion/reclamation semantics.
+
+```bash
+# Namespace lifecycle
+cwic registry namespace create acme --zone US-LAB-01A --wait
+cwic registry namespace get acme
+cwic registry namespace list
+cwic registry namespace delete acme --yes --wait
+
+# Configure Docker credentials for one or more namespaces
+cwic registry login acme
+cwic registry namespace list -o name | cwic registry login
+
+# Indexed manifest metadata (selectors are always explicit)
+cwic registry manifest list acme --include-untagged
+cwic registry manifest list acme/team/app
+cwic registry manifest list acme/team/app --sort-by=-reachable-size
+cwic registry manifest get acme/team/app:latest
+cwic registry manifest get acme/team/app:stable@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+cwic registry manifest get acme/team/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+# Resolve and list mutable tags
+cwic registry tag get acme/team/app:latest
+cwic registry tag get acme/team/app:stable@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+cwic registry tag list acme/team/app
+cwic registry tag list acme/team/app --sort-by=digest
+
+# Safe mutations and OCI referrers
+cwic registry tag delete acme/team/app:stale --yes
+cwic registry tag delete acme/team/app:stale@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --yes
+cwic registry manifest delete acme/team/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --yes
+cwic registry referrer list acme/team/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+# Namespace lifecycle operation records
+cwic registry operation list acme
+cwic registry operation get namespaces/acme/operations/4d75b57a-9ee4-4b4d-889b-35b7da3e1939
+
+# Compose reads and mutations. The trailing "-" is optional for piped input.
+cwic registry namespace list | cwic registry manifest list
+cwic registry manifest list acme -o name | cwic registry manifest delete --yes
+cwic registry tag list acme/team/app | cwic registry tag delete --yes
+cwic registry operation list acme | cwic registry operation get
+```
+
+- Set `CWIC_REGISTRY_API_URL` or pass `--api-url` to use a non-production API endpoint.
+- A `repository:tag@digest` reference selects the tag and uses the digest as a compare-and-match condition, so lookups and deletions fail safely if the tag has moved.
+- Prefer `-o name` for scripts; CWIC also understands its own headed table output when commands are connected directly with a pipe.
 
 ### NodePool Management
 
