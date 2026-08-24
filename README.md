@@ -46,6 +46,8 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
     - [4. Basic Usage](#4-basic-usage)
   - [Commands](#commands)
     - [Authentication](#authentication)
+      - [Object Storage Credentials from OIDC](#object-storage-credentials-from-oidc)
+      - [Object Storage Credentials from an API Token](#object-storage-credentials-from-an-api-token)
     - [Cluster Management](#cluster-management)
     - [Node Operations](#node-operations)
     - [SUNK (Slurm) Management](#sunk-slurm-management)
@@ -222,6 +224,15 @@ cwic auth switch
 
 # Logout from current organization
 cwic auth logout
+
+# Print the current organization's token
+cwic auth token
+
+# Exchange an OIDC token for temporary object-storage credentials
+cwic auth accesskey oidc -- <command that prints an OIDC token>
+
+# Exchange a CoreWeave API token for temporary object-storage credentials
+cwic auth accesskey api-token
 ```
 
 **Examples:**
@@ -251,6 +262,96 @@ cwic auth whoami
 # Include groups and roles
 cwic auth whoami -o wide
 ```
+
+#### Object Storage Credentials from OIDC
+
+`cwic auth accesskey oidc` exchanges an OIDC token for temporary CoreWeave
+object-storage credentials and prints them as AWS
+[process credentials](https://docs.aws.amazon.com/sdkref/latest/guide/feature-process-credentials.html),
+so the AWS CLI and SDKs can authenticate to CoreWeave Object Storage with your
+existing identity provider instead of a long-lived access key.
+
+Point a profile at it in `~/.aws/config`:
+
+```ini
+[profile coreweave]
+region = US-EAST-04A
+endpoint_url = https://cwobject.com
+s3 =
+    addressing_style = virtual
+
+credential_process = cwic auth accesskey oidc --org-id cwXXXX --storage=keyring -- kubelogin get-token \
+    --oidc-issuer-url=https://example.okta.com/oauth2/xxx \
+    --oidc-client-id=xxx --oidc-extra-scope=openid,email,profile \
+    --oidc-pkce-method S256
+```
+
+Then use it like any other profile:
+
+```bash
+AWS_PROFILE=coreweave aws s3 ls
+```
+
+Everything after `--` is the command that produces the OIDC token — `kubelogin
+get-token` above — and is run unmodified, so its own flags pass through. cwic's
+flags must come before the `--`.
+
+The resulting credentials are cached per organization, endpoint and command, and
+reused until 80% of their lifetime has elapsed, so repeated `aws` calls do not
+re-run the OIDC flow each time. Caching the OIDC token itself is left to the
+command (`kubelogin` does this).
+
+```bash
+# Use the active organization from 'cwic auth login'
+cwic auth accesskey oidc -- kubelogin get-token --oidc-issuer-url=<issuer> --oidc-client-id=<id>
+
+# Name the organization explicitly (required when several are logged in)
+cwic auth accesskey oidc --org-id cwXXXX -- kubelogin get-token --oidc-issuer-url=<issuer> --oidc-client-id=<id>
+
+# Cache the credentials in the OS keyring rather than on disk
+cwic auth accesskey oidc --storage=keyring -- kubelogin get-token --oidc-issuer-url=<issuer> --oidc-client-id=<id>
+```
+
+Credentials are cached in the backend `--storage` names. Without it they go to
+whichever backend that organization's token already uses (see
+[Configuration](#configuration)), falling back to disk.
+
+#### Object Storage Credentials from an API Token
+
+`cwic auth accesskey api-token` does the same job as the `oidc` subcommand, but
+exchanges a CoreWeave **API token** rather than an OIDC token. Use it where
+there is no identity provider to talk to — CI jobs, servers, containers — since
+it needs no browser and no external helper command.
+
+The token is read from `COREWEAVE_API_TOKEN`, or, when that is unset, from the
+token stored by `cwic auth login` for the active organization. So on a laptop it
+generally needs no configuration at all:
+
+```ini
+[profile coreweave]
+region = US-EAST-04A
+endpoint_url = https://cwobject.com
+s3 =
+    addressing_style = virtual
+
+credential_process = cwic auth accesskey api-token --storage=keyring
+```
+
+```bash
+# Uses the token from 'cwic auth login'
+cwic auth accesskey api-token
+
+# Or supply one explicitly, e.g. in CI
+COREWEAVE_API_TOKEN=CW-SECRET-... cwic auth accesskey api-token
+
+# Cache the credentials in the OS keyring rather than on disk
+cwic auth accesskey api-token --storage=keyring
+```
+
+Credentials are cached per token and organization, and reused until
+80% of their lifetime has elapsed, so repeated `aws` calls do not mint a new
+access key each time. The cache key is a digest, so the token itself is never
+written to the cache directory or the keyring.
 
 ### Cluster Management
 
@@ -416,7 +517,33 @@ Manage CoreWeave AI Object Storage resources using the S3-compatible API.
 
 #### Configuration
 
-Before using `cwobject` commands, you need to configure your environment with access credentials. You can use either an s3cfg file or environment variables.
+`cwobject` needs an endpoint and a set of credentials. Credentials can come from
+an s3cfg file, from environment variables, or — when neither carries an
+access/secret pair — from your CoreWeave API token, which `cwobject` exchanges
+for temporary ones automatically.
+
+That last case usually means no credential configuration at all: log in once and
+use `cwobject`, with only the endpoint set.
+
+```bash
+cwic auth login
+export AWS_ENDPOINT_URL=https://cwobject.com
+export AWS_REGION=EU-SOUTH-03B   # your CoreWeave zone
+
+cwic cwobject list
+```
+
+The token is taken from `COREWEAVE_API_TOKEN`, or the login stored by
+`cwic auth login`. The credentials it mints are refreshed automatically as they
+near expiry, so long-running transfers do not fail partway through, and they are
+cached between invocations exactly as
+[`cwic auth accesskey api-token`](#object-storage-credentials-from-an-api-token)
+caches them — `--storage` selects the backend for the credentials (disk or keyring). 
+A static access/secret pair in your s3cfg or environment always takes precedence, 
+so existing setups are unaffected.
+
+The rest of this section covers configuring those static credentials explicitly.
+You can use either an s3cfg file or environment variables.
 
 When using an `s3cfg` file that follows the `s3cmd` format, you would create the file at `~/.s3cfg`, or alternatively use the `--config` flag to specify a different path. The content should look like this:
 
@@ -482,6 +609,19 @@ cwic cwobject rb --force <bucket-name>
 # Bucket information
 cwic cwobject bucket describe <bucket-name>
 cwic cwobject bucket describe --all  # describe all buckets
+
+# Enable archive for objects with 60 days since last access
+cwic cwobject bucket update my-bucket \
+  --archive-enabled=true \
+  --archive-after-last-access-days=60
+
+# Change the last access inactivity threshold without changing whether archive is enabled
+cwic cwobject bucket update my-bucket \
+  --archive-after-last-access-days=90
+
+# Disable archive
+cwic cwobject bucket update my-bucket \
+  --archive-enabled=false
 
 # Move objects between buckets
 cwic cwobject move s3://source-bucket/object s3://dest-bucket/object
