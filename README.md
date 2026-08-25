@@ -26,6 +26,7 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
 - **SUNK Cluster Interaction**: Seamlessly interact with SUNK (Slurm) clusters
 - **Object Storage**: Complete CoreWeave Object Storage (`cwobject`) management capabilities
 - **Container Registry**: Manage CWCR namespaces, manifests, tags, referrers, and lifecycle operations
+- **DFS Verification**: Trigger and inspect fio-backed distributed file system verification runs
 - **CoreWeave Dashboards**: Link straight into the relevant dashboard, pre-filtered, in CoreWeave's managed Grafana
 
 ## Table of Contents
@@ -57,6 +58,7 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
     - [Object Storage (cwobject)](#object-storage-cwobject)
     - [Container Registry](#container-registry)
     - [NodePool Management](#nodepool-management)
+    - [DFS Verification](#dfs-verification)
   - [Configuration](#configuration)
   - [Development](#development)
     - [Prerequisites](#prerequisites)
@@ -162,7 +164,7 @@ cwic cluster auth all
 ```
 
 > [!IMPORTANT]
-> Kubernetes-based cwic commands (`node`, `sunk`, `nodepool`) require this kubeconfig.
+> Kubernetes-based cwic commands (`node`, `sunk`, `nodepool`, `dfs`) require this kubeconfig.
 > If you created a new kubeconfig file (not appended to default), set the KUBECONFIG environment variable:
 > ```bash
 > export KUBECONFIG=/path/to/your/kubeconfig
@@ -732,6 +734,41 @@ cwic nodepool rollout stop <nodepool-name>
 
 **Features:**
 - Manage staging and rollback of Node configurations
+
+### DFS Verification
+
+Verify distributed file system health. `cwic dfs verify` launches an
+asynchronous fio-backed verification run as a Kubernetes Job against a
+StorageClass (or a node's local NVMe) and returns immediately. `cwic dfs
+describe` reads run results back from metrics and cluster state, grading
+each run PASS, FAIL, RUNNING, or PENDING (metrics not yet ingested).
+
+```bash
+# Trigger a verification run against a StorageClass
+cwic dfs verify --storage-class shared-vast
+
+# Verify local NVMe, pinned to a node for node-scoped triage
+cwic dfs verify --storage-class local-nvme --node <node-name>
+
+# Change the throwaway PVC size (default 20Gi)
+cwic dfs verify --storage-class shared-vast --size 40Gi
+
+# Run only the data or metadata fio profiles (default: both)
+cwic dfs verify --storage-class shared-vast --test data
+
+# List PersistentVolumes and the latest runs, newest first
+cwic dfs describe
+
+# Filter the run list by StorageClass
+cwic dfs describe --storage-class shared-vast
+
+# Full report for one run: IOPS, bandwidth, latency percentiles, I/O errors.
+# A failed run exits with code 2.
+cwic dfs describe --run-id <run-id>
+
+# Machine-readable report
+cwic dfs describe --run-id <run-id> -o json
+```
 
 ## Configuration
 
