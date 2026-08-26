@@ -7,12 +7,12 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
 ```
 ╔════════════════════════════════════════════════════════════╗
 ║                                                            ║
-║               ██████╗██╗    ██╗██╗  ██████╗                ║
-║              ██╔════╝██║    ██║██║ ██╔═══                  ║
-║              ██║     ██║ █╗ ██║██║ ██║                     ║
-║              ██║     ██║███╗██║██║ ██║                     ║
-║              ╚██████╗╚███╔███╔╝██║ ╚██████                 ║
-║               ╚═════╝ ╚══╝╚══╝ ╚═╝  ╚═════╝                ║
+║               ██████╗ ██╗    ██╗ ██╗  ██████╗              ║
+║              ██╔════╝ ██║    ██║ ██║ ██╔═══                ║
+║              ██║      ██║ █╗ ██║ ██║ ██║                   ║
+║              ██║      ██║███╗██║ ██║ ██║                   ║
+║              ╚██████╗ ╚███╔███╔╝ ██║ ╚██████               ║
+║               ╚═════╝  ╚══╝╚══╝  ╚═╝  ╚═════╝              ║
 ║                                                            ║
 ║            C W I C — CoreWeave Intelligent CLI             ║
 ╚════════════════════════════════════════════════════════════╝
@@ -648,7 +648,7 @@ cwic cwobject policy delete --name <policy-name>
 
 ### Container Registry
 
-Manage CoreWeave Container Registry resources. Registry commands use the active CWIC authentication token and support `table`, `json`, `yaml`, and `name` output. 
+Manage CoreWeave Container Registry resources. Registry commands use the active CWIC authentication token and support `table`, `wide`, `json`, `yaml`, and `name` output.
 List commands automatically retrieve every page, and commands that take targets support multiple arguments or newline-delimited stdin.
 
 See the [registry command guide](cmd/registry/README.md) for the complete command surface, reference syntax, login behavior, pipelines, batch operations, idempotent retries, and deletion/reclamation semantics.
@@ -658,7 +658,24 @@ See the [registry command guide](cmd/registry/README.md) for the complete comman
 cwic registry namespace create acme --zone US-LAB-01A --wait
 cwic registry namespace get acme
 cwic registry namespace list
+cwic registry namespace list --zone US-LAB-01A --sort-by=-created
 cwic registry namespace delete acme --yes --wait
+
+# Inspect organization-zone and per-namespace quotas
+cwic registry quota list
+cwic registry namespace quota list
+cwic registry namespace list | cwic registry namespace quota list
+
+# Inspect and mutate namespace access policy
+cwic registry namespace access get acme -o yaml
+cwic registry namespace list | cwic registry namespace access get
+cwic registry namespace access update acme --file access.yaml --wait
+cwic registry namespace access policy-set update acme ci-pull --file policy-set.yaml --wait
+cwic registry namespace access policy-set delete acme ci-pull --yes --wait
+cwic registry namespace access revision list acme
+cwic registry namespace list | cwic registry namespace access revision list
+cwic registry namespace access revision list acme | cwic registry namespace access revision get
+cwic registry namespace access revision rollback acme 2 --wait
 
 # Configure Docker credentials for one or more namespaces
 cwic registry login acme
