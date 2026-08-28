@@ -299,7 +299,7 @@ get-token` above — and is run unmodified, so its own flags pass through. cwic'
 flags must come before the `--`.
 
 The resulting credentials are cached per organization, endpoint and command, and
-reused until 80% of their lifetime has elapsed, so repeated `aws` calls do not
+reused until they near expiry, so repeated `aws` calls do not
 re-run the OIDC flow each time. Caching the OIDC token itself is left to the
 command (`kubelogin` does this).
 
@@ -350,8 +350,8 @@ COREWEAVE_API_TOKEN=CW-SECRET-... cwic auth accesskey api-token
 cwic auth accesskey api-token --storage=keyring
 ```
 
-Credentials are cached per token and organization, and reused until
-80% of their lifetime has elapsed, so repeated `aws` calls do not mint a new
+Credentials are cached per token and organization, and reused until they near
+expiry, so repeated `aws` calls do not mint a new
 access key each time. The cache key is a digest, so the token itself is never
 written to the cache directory or the keyring.
 
