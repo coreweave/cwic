@@ -21,6 +21,7 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
 ## Features
 
 - **Authentication Management**: Secure token-based authentication with CoreWeave services
+- **Sandbox Runners**: [Create and manage runners and policies through the v1 API](#managed-sandbox-runners)
 - **Cluster Operations**: List, manage, and generate kubeconfigs for CoreWeave Kubernetes clusters
 - **Node Management**: Comprehensive node operations including drain, cordon, reboot, and monitoring
 - **SUNK Cluster Interaction**: Seamlessly interact with SUNK (Slurm) clusters
@@ -49,7 +50,9 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
     - [Authentication](#authentication)
       - [Object Storage Credentials from OIDC](#object-storage-credentials-from-oidc)
       - [Object Storage Credentials from an API Token](#object-storage-credentials-from-an-api-token)
+      - [Kubernetes Credentials from an API Token](#kubernetes-credentials-from-an-api-token)
     - [Cluster Management](#cluster-management)
+    - [Managed Sandbox runners](#managed-sandbox-runners)
     - [Node Operations](#node-operations)
     - [SUNK (Slurm) Management](#sunk-slurm-management)
       - [Cluster Operations](#cluster-operations)
@@ -161,7 +164,15 @@ cwic cluster auth CLUSTER_NAME
 
 # Generate kubeconfig for all clusters
 cwic cluster auth all
+
+# Use cwic's exec credential plugin instead of embedding the token
+cwic cluster auth CLUSTER_NAME --cwic-auth
 ```
+
+Generated kubeconfigs embed a static token by default. With `--cwic-auth`,
+they instead authenticate through an exec block that runs `cwic auth k8s api-token`
+at use time, so re-running `cwic auth login` re-credentials every kubeconfig
+at once without storing the token in the kubeconfig.
 
 > [!IMPORTANT]
 > Kubernetes-based cwic commands (`node`, `sunk`, `nodepool`, `dfs`) require this kubeconfig.
@@ -229,6 +240,9 @@ cwic auth logout
 
 # Print the current organization's token
 cwic auth token
+
+# Emit the token as a Kubernetes ExecCredential, for kubeconfig exec blocks
+cwic auth k8s api-token --org-id cwXXXX
 
 # Exchange an OIDC token for temporary object-storage credentials
 cwic auth accesskey oidc -- <command that prints an OIDC token>
@@ -355,6 +369,31 @@ expiry, so repeated `aws` calls do not mint a new
 access key each time. The cache key is a digest, so the token itself is never
 written to the cache directory or the keyring.
 
+#### Kubernetes Credentials from an API Token
+
+`cwic auth k8s api-token` emits the CoreWeave API token in the
+Kubernetes [ExecCredential](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#client-go-credential-plugins)
+format, so a kubeconfig can look the token up at use time through an `exec`
+block instead of embedding a copy of it. Rotating the token with
+`cwic auth login` then updates every kubeconfig at once, and the files carry no
+secret.
+
+```yaml
+users:
+- name: coreweave
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1
+      command: cwic
+      args: ["auth", "k8s", "api-token", "--org-id", "cwXXXX"]
+      interactiveMode: Never
+```
+
+Pin `--org-id` in kubeconfigs to keep kubeconfig functional after `cwic auth switch`.
+An explicit `--org-id` always reads that organization's stored login; without
+it the token comes from `COREWEAVE_API_TOKEN` when set, or the login stored
+by `cwic auth login` otherwise. 
+
 ### Cluster Management
 
 **Features:**
@@ -372,6 +411,133 @@ cwic cluster auth <cluster-name>
 # Generate kubeconfig for all clusters
 cwic cluster auth all
 ```
+
+### Managed Sandbox runners
+
+`cwic sandbox runner` uses the v1 RunnerManagementService for create, get,
+list, edit, delete, and upgrade. The API must implement full managed-runner
+CRUD (Sandman v0.176.0 or later). These operations require `sandbox_admin`.
+
+#### Create a runner
+
+Start with a template, fill in the runner ID, zone, and CKS cluster UUID, and
+review the policy:
+
+```sh
+cwic sandbox runner create --print-template > runner.yaml
+$EDITOR runner.yaml
+cwic sandbox runner create -f runner.yaml --request-id my-runner-provisioning-1
+```
+
+The file is a v1 ManagedRunner resource, without a request wrapper:
+
+```yaml
+identity:
+  runner_id: my-runner
+  zone: us-east-04a
+  cluster_id: 00000000-0000-4000-8000-000000000001
+  runner_group_id: default
+display_name: Development runners
+spec:
+  release_channel: RELEASE_CHANNEL_STABLE
+  enforce_resource_limits: true
+  overrides:
+    env:
+      LOG_LEVEL: info
+policy:
+  constraints:
+    lifecycle:
+      default_lifetime_seconds: 86400
+```
+
+The runner and explicit policy are created together. `policy: {}` is accepted
+when an empty policy is intended; omitting policy is an error. Profile bindings
+are not required. The server defaults an omitted runner group to `default`.
+
+Without `-f`, an interactive terminal offers cluster selection, then opens the
+runner configuration and policy in `$EDITOR` for review before confirmation.
+Non-interactive use requires `-f` and never prompts or creates a profile template.
+
+The `--request-id` flag sets the create request's idempotency token, which the
+server stores to recognize retries. It is separate from the HTTP request ID
+used for tracing; middleware-generated tracing IDs do not replace this token.
+A token is generated when the flag is omitted. To retry across CLI invocations
+after an uncertain response, supply an explicit token on the first attempt and
+reuse it with identical input. Use a new token for a different configuration or
+after deleting the original runner. Tokens must be valid UTF-8 and at most 128
+bytes.
+
+#### Inspect and edit
+
+```sh
+cwic sandbox runner get
+cwic sandbox runner get my-runner -o json
+cwic sandbox runner describe my-runner
+cwic sandbox runner edit my-runner
+```
+
+To filter a list, pass the returned `identity.cluster_id` to `--cluster` and
+optionally add `--zone`. Older runners may return a cluster name in that field;
+the list filter accepts it. Creating a new runner still requires a CKS UUID.
+
+`edit` opens the current mutable settings and policy in `$EDITOR`. Saving
+without changes skips the update. Removing an optional setting in the editor
+clears that setting. Removing the policy or release channel is rejected; choose
+`RELEASE_CHANNEL_STABLE` or `RELEASE_CHANNEL_RAPID` explicitly when changing channels.
+
+For file-based edits, export a complete template first:
+
+```sh
+cwic sandbox runner edit my-runner --print-template > runner-edit.yaml
+$EDITOR runner-edit.yaml
+cwic sandbox runner edit my-runner -f runner-edit.yaml
+```
+
+The template retains all deployment override fields, including environment
+variables, arguments, node selectors, resources, and scaling. Objects such as
+`spec.overrides`, `spec.data_plane`, and `policy` are replacement boundaries:
+keep their sibling settings when editing a file. Fields absent from a file patch
+are not updated; use explicit `null` to clear an optional object or `false` to
+turn off a boolean. To change runner environment configuration, edit
+`spec.overrides.env` in the exported document.
+
+Policy edits carry the `etag` from the exported document. A stale revision fails
+without retrying against a new token. `--etag TOKEN` can pin a revision explicitly.
+For a policy patch with no token, cwic reads the current revision before submitting.
+The dedicated `cwic sandbox runner policy` commands continue to edit policy alone.
+
+Supported spec fields include release channel, maintenance policy, deployment
+overrides, resource-limit enforcement, volumes, tenant metrics, image pull policy,
+and direct data-plane configuration. For example, use `spec.data_plane.disabled: {}`
+to keep data operations on the Gateway.
+
+#### Upgrade and delete
+
+```sh
+cwic sandbox runner upgrade my-runner
+cwic sandbox runner delete my-runner --yes
+```
+
+Upgrade and deletion are asynchronous. The commands report acceptance; use
+`get` or `describe` to inspect completion. Sandman enforces deletion guards,
+including registered-volume checks. Batch deletion reports individual failures.
+
+#### Migrating older command input
+
+- Use the operator-assigned `runner_id` for lookups and mutations. v1 does not
+  expose or resolve the old database UUID as a separate runner identifier.
+- Create files use `identity.cluster_id` (a CKS UUID). `cluster_name` is now
+  output-only; the interactive flow resolves the UUID from cluster selection.
+- Rename `managed_spec` to `spec`, replace profile bindings with an explicit
+  policy, and use the new template to check supported fields. The CLI rejects
+  legacy fields instead of silently ignoring them.
+- v1 does not expose legacy profile-binding or `endpoint_routes` edits. Existing
+  beta-only settings remain stored on the server when v1 configuration is updated.
+  Legacy `sandbox profile` commands retain their beta API and binding-reference
+  checks; `sandbox template` commands continue using v1.
+- JSON output is still an array, now containing v1 ManagedRunner objects:
+  `identity.runner_id`, `spec`, `policy`, `etag`, and v1 timestamps such as
+  `create_time`. Scripts that read `id`, `managed_spec`, or `created_at` must update.
 
 ### Node Operations
 
