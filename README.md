@@ -832,6 +832,11 @@ cwic registry quota list
 cwic registry namespace quota list
 cwic registry namespace list | cwic registry namespace quota list
 
+# Inspect, preview, and apply manifest retention policies
+cwic registry namespace lifecycle get acme -o yaml
+cwic registry namespace lifecycle preview acme --file lifecycle.yaml
+cwic registry namespace lifecycle update acme --file lifecycle.yaml --wait
+
 # Inspect and mutate namespace access policy
 cwic registry namespace access get acme -o yaml
 cwic registry namespace list | cwic registry namespace access get
