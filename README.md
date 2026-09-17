@@ -506,6 +506,21 @@ without retrying against a new token. `--etag TOKEN` can pin a revision explicit
 For a policy patch with no token, cwic reads the current revision before submitting.
 The dedicated `cwic sandbox runner policy` commands continue to edit policy alone.
 
+Network policy files now use `https_hostname`, `https_hostname_except`, and
+`deny_https_hostname_rules`. Runner, policy, and sandbox-template inputs still
+accept the former `dns_name`, `dns_name_except`, and `deny_dns` names (and their
+camelCase spellings). Exports use the new names. Supplying both spellings of a
+field is an error. `deny_https_hostname_rules` controls hostname-based HTTPS
+grants; `dns_egress` independently controls outbound DNS traffic on port 53.
+
+To edit an existing policy without an original JSON/YAML file:
+
+```sh
+cwic sandbox runner policy edit my-runner --print-template > policy.yaml
+$EDITOR policy.yaml
+cwic sandbox runner policy edit my-runner -f policy.yaml
+```
+
 Supported spec fields include release channel, maintenance policy, deployment
 overrides, resource-limit enforcement, volumes, tenant metrics, image pull policy,
 and direct data-plane configuration. For example, use `spec.data_plane.disabled: {}`
@@ -818,6 +833,39 @@ Manage CoreWeave Container Registry resources. Registry commands use the active 
 List commands automatically retrieve every page, and commands that take targets support multiple arguments or newline-delimited stdin.
 
 See the [registry command guide](cmd/registry/README.md) for the complete command surface, reference syntax, login behavior, pipelines, batch operations, idempotent retries, and deletion/reclamation semantics.
+
+#### Docker credential helper
+
+The cwic credential helper implements Docker's credential-helper protocol using
+stored cwic logins.
+
+On macOS/Linux, create the helper name as a symlink to your cwic executable:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+ln -s "$(command -v cwic)" "$HOME/.local/bin/docker-credential-cwic"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+On Windows, place a copy named `docker-credential-cwic.exe` on PATH and re-copy it after each cwic upgrade.
+
+Log in, then configure one or more registry hostnames:
+
+```bash
+cwic auth login
+# Clear any previous Docker login before enabling this helper.
+docker logout my-namespace.cwcr.io
+cwic registry credential-helper configure my-namespace.cwcr.io
+docker pull my-namespace.cwcr.io/team/image:latest
+```
+
+Configure defaults to the active organization from `cwic auth login`; use
+`--org-id cwXXXX` to select another stored login. The selected organization is
+saved with the registry binding, so later `cwic auth switch` calls do not change
+Docker's login. If multiple organizations are stored with none selected, pass
+`--org-id` or select one with `cwic auth switch` first.
+
+#### Registry command examples
 
 ```bash
 # Namespace lifecycle
