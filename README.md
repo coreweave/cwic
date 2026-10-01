@@ -51,6 +51,8 @@ CWIC (CoreWeave Intelligent CLI) is a powerful command-line interface for intera
       - [Object Storage Credentials from OIDC](#object-storage-credentials-from-oidc)
       - [Object Storage Credentials from an API Token](#object-storage-credentials-from-an-api-token)
       - [Kubernetes Credentials from an API Token](#kubernetes-credentials-from-an-api-token)
+    - [IAM](#iam)
+      - [Workload Federation](#workload-federation)
     - [Cluster Management](#cluster-management)
     - [Managed Sandbox runners](#managed-sandbox-runners)
     - [Node Operations](#node-operations)
@@ -167,6 +169,10 @@ cwic cluster auth all
 
 # Use cwic's exec credential plugin instead of embedding the token
 cwic cluster auth CLUSTER_NAME --cwic-auth
+
+# Use a custom OIDC exec credential provider for all clusters
+cwic cluster auth all --oidc-auth -- kubelogin get-token \
+  --oidc-issuer-url=https://issuer.example.com --oidc-client-id=kubernetes
 ```
 
 Generated kubeconfigs embed a static token by default. With `--cwic-auth`,
@@ -174,12 +180,68 @@ they instead authenticate through an exec block that runs `cwic auth k8s api-tok
 at use time, so re-running `cwic auth login` re-credentials every kubeconfig
 at once without storing the token in the kubeconfig.
 
+With `--oidc-auth`, the command and arguments after `--` are saved in each
+generated kubeconfig's `user.exec` configuration, without embedding the API token.
+The command runs when a Kubernetes client needs credentials, and must output a
+`client.authentication.k8s.io/v1` `ExecCredential`.
+
+OIDC kubeconfigs use the unmanaged endpoint, `https://api.<apiServerEndpoint>`,
+preserving the cluster hash returned by the CKS API. Existing cwic contexts migrate
+their server URL along with their credentials. If other contexts share that cluster
+entry or its server differs beyond the `api.` prefix, rerun the command and select
+"Create a new kubeconfig file" to keep the existing configuration.
+Configure OIDC trust and a CKS-managed cluster-admin group with
+`cwic cluster oidc config update`, as shown below. See
+[Implement unmanaged authentication](https://docs.coreweave.com/products/cks/auth-access/unmanaged-auth/implement-unmanaged-auth)
+for the identity-provider prerequisites and additional RBAC setup.
+
 > [!IMPORTANT]
 > Kubernetes-based cwic commands (`node`, `sunk`, `nodepool`, `dfs`) require this kubeconfig.
 > If you created a new kubeconfig file (not appended to default), set the KUBECONFIG environment variable:
 > ```bash
 > export KUBECONFIG=/path/to/your/kubeconfig
 > ```
+
+#### Cluster OIDC configuration
+
+Read or update live OIDC settings through the CKS API. These commands use
+`COREWEAVE_API_TOKEN` or the active `cwic auth login` and work for public and
+private clusters without a kubeconfig or direct Kubernetes API access.
+
+```bash
+cwic cluster oidc config get my-cluster
+
+# Initialize OIDC trust and let CKS manage the cluster-admin group binding.
+cwic cluster oidc config update my-cluster \
+  --issuer-url https://issuer.example.com --client-id kubernetes \
+  --groups-claim groups --groups-prefix 'okta:' \
+  --admin-group-binding 'platform-admins'
+
+# Preview a change to only the admin group.
+cwic cluster oidc config update my-cluster \
+  --admin-group-binding 'platform-admins' --dry-run
+
+# Clear the setting and remove the CKS-managed admin binding.
+cwic cluster oidc config update my-cluster --admin-group-binding=''
+```
+
+`--admin-group-binding` sets `oidc.adminGroupBinding` to one Kubernetes group
+name. cwic adds the effective groups prefix unless the supplied group already
+starts with it: with `--groups-prefix 'okta:'`, both `platform-admins` and
+`okta:platform-admins` produce `okta:platform-admins`. The prefix comes from
+`--groups-prefix` when supplied, or the current cluster configuration otherwise.
+If the group contains a colon after removing the expected prefix, cwic warns on
+stderr that it may contain an incorrect prefix, and shows the resulting binding.
+For example, `other:admins` with prefix `okta:` becomes `okta:other:admins` with
+a warning. CKS reconciles the `cluster-admin` binding. Omitted flags preserve
+existing settings; when changing the groups prefix, also supply
+`--admin-group-binding` to update the admin group. Updates include only explicitly
+supplied fields in the API field mask.
+
+`get` prints the current OIDC configuration as JSON, or `null` if absent.
+`--dry-run` prints the proposed update without submitting it. CKS applies
+updates asynchronously; wait for the cluster to return to RUNNING before
+using the new configuration.
 
 ### 4. Basic Usage
 
@@ -394,6 +456,49 @@ An explicit `--org-id` always reads that organization's stored login; without
 it the token comes from `COREWEAVE_API_TOKEN` when set, or the login stored
 by `cwic auth login` otherwise. 
 
+### IAM
+
+#### Workload Federation
+
+Manage workload federation OIDC configurations with
+`cwic iam workload-federation oidc`. Authenticate with `cwic auth login` or set
+`COREWEAVE_API_TOKEN`, which takes precedence over the stored login.
+
+```bash
+# Create a provider configuration
+cwic iam workload-federation oidc create \
+  --name github-actions \
+  --issuer-url https://token.actions.githubusercontent.com \
+  --audience coreweave
+
+# List configurations, or get one by ID
+cwic iam workload-federation oidc get
+cwic iam workload-federation oidc get <ID> -o yaml
+
+# Update only the fields you specify
+cwic iam workload-federation oidc update <ID> \
+  --name "CI" --issuer-url https://issuer.example.com --audience coreweave
+cwic iam workload-federation oidc update <ID> --description "Build jobs"
+cwic iam workload-federation oidc update <ID> --description ""
+cwic iam workload-federation oidc update <ID> --active=false
+cwic iam workload-federation oidc update <ID> --active
+
+# Delete with an interactive confirmation, or confirm explicitly for scripts
+cwic iam workload-federation oidc delete <ID>
+cwic iam workload-federation oidc delete <ID> --yes
+```
+
+`create` requires `--name`, `--issuer-url`, and `--audience`. 
+
+`update` requires at least one of `--name`, `--issuer-url`, `--audience`,
+`--description`, or `--active`. Omitted fields keep their existing values.
+Deletion requires `--yes` when stdin is non-interactive.
+
+Use `-o table` (the default), `wide`, `json`, `yaml`, or `name` for create, get, and update
+output. `-o name` prints configuration IDs, and `--no-headers` suppresses table
+headers. JSON and YAML return one object for `create`, `get <ID>`, or `update <ID>`, and an
+`items` list for `get`.
+
 ### Cluster Management
 
 **Features:**
@@ -505,6 +610,21 @@ Policy edits carry the `etag` from the exported document. A stale revision fails
 without retrying against a new token. `--etag TOKEN` can pin a revision explicitly.
 For a policy patch with no token, cwic reads the current revision before submitting.
 The dedicated `cwic sandbox runner policy` commands continue to edit policy alone.
+
+Network policy files now use `https_hostname`, `https_hostname_except`, and
+`deny_https_hostname_rules`. Runner, policy, and sandbox-template inputs still
+accept the former `dns_name`, `dns_name_except`, and `deny_dns` names (and their
+camelCase spellings). Exports use the new names. Supplying both spellings of a
+field is an error. `deny_https_hostname_rules` controls hostname-based HTTPS
+grants; `dns_egress` independently controls outbound DNS traffic on port 53.
+
+To edit an existing policy without an original JSON/YAML file:
+
+```sh
+cwic sandbox runner policy edit my-runner --print-template > policy.yaml
+$EDITOR policy.yaml
+cwic sandbox runner policy edit my-runner -f policy.yaml
+```
 
 Supported spec fields include release channel, maintenance policy, deployment
 overrides, resource-limit enforcement, volumes, tenant metrics, image pull policy,
@@ -817,7 +937,78 @@ cwic cwobject policy delete --name <policy-name>
 Manage CoreWeave Container Registry resources. Registry commands use the active CWIC authentication token and support `table`, `wide`, `json`, `yaml`, and `name` output.
 List commands automatically retrieve every page, and commands that take targets support multiple arguments or newline-delimited stdin.
 
-See the [registry command guide](cmd/registry/README.md) for the complete command surface, reference syntax, login behavior, pipelines, batch operations, idempotent retries, and deletion/reclamation semantics.
+See the [registry command guide](cmd/registry/README.md) for the complete command surface, reference syntax, credential-helper behavior, pipelines, batch operations, idempotent retries, and deletion/reclamation semantics.
+
+#### Docker credential helper
+
+The cwic credential helper implements Docker's credential-helper protocol using
+stored cwic logins or an OIDC token command for workload federation.
+
+On macOS/Linux, install the executable alias:
+
+```bash
+cwic registry credential-helper install
+# Optional custom location:
+cwic registry credential-helper install --bin-dir "$HOME/my tools/bin"
+```
+
+The default destination is `$HOME/.local/bin/docker-credential-cwic`. Installation creates a symlink to the existing cwic executable and prints its path and next steps. It preserves a matching public `cwic` path on PATH so package-manager symlink updates and executable replacement at that path continue to work. Keep cwic at that path; moving or removing it breaks the helper. A correct existing helper (including one provided by a package manager) is left in place. An explicit `--bin-dir` selects that destination even if another correct helper is on PATH.
+
+“Helper installed” means the alias exists; “helper ready to use” means the current PATH resolves a matching executable. If the destination is missing from PATH or another helper shadows it, follow the printed instructions in your current terminal. For the default directory in Bash or Zsh:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+For future sessions, persist that line in `~/.bashrc` for Bash (ensure your active login profile, usually `~/.bash_profile`, sources it), or `${ZDOTDIR:-$HOME}/.zshrc` for Zsh. Use the actual custom directory if supplied; the installer prints properly quoted commands. Fish receives `set -gx PATH` and `fish_add_path` guidance; unknown shells receive a clearly labeled POSIX example and instructions to use their shell's syntax and startup file. Run the command in your parent shell, reload its configuration, or open a new terminal: the installer cannot change its parent shell's environment. Rerun install to check readiness, then configure registry bindings below.
+
+Conflicting files or broken links are never overwritten. Inspect the reported path and deliberately move or remove the conflict, or choose another `--bin-dir`. For permission failures, select a writable directory or correct its permissions. For PATH shadowing, put the intended helper directory first and inspect the earlier helper. Installation does not edit shell startup files, Docker configuration, or stored credentials, download binaries, or request elevated privileges. Registry and organization bindings remain the responsibility of `configure`.
+
+On Windows, place a copy named `docker-credential-cwic.exe` on PATH and re-copy it after each cwic upgrade.
+
+Log in, then configure one or more registry hostnames:
+
+```bash
+cwic auth login
+# Clear any previous Docker login before enabling this helper.
+docker logout my-namespace.cwcr.io
+cwic registry credential-helper configure my-namespace.cwcr.io
+# Or configure every namespace returned by the Registry API.
+cwic registry namespace list | cwic registry credential-helper configure
+docker pull my-namespace.cwcr.io/team/image:latest
+```
+
+Configure defaults to the active organization from `cwic auth login`; use `--org-id cwXXXX` to select another stored login. The selected organization is saved with the registry binding, so later `cwic auth switch` calls do not change Docker's login. Configuration validates the stored token and organization with WhoAmI. A principal with no recognized Registry Namespace role produces a warning, but configuration is saved because the registry remains the authorization authority. If multiple organizations are stored with none selected, pass `--org-id` or select one with `cwic auth switch` first.
+
+Remove the binding and Docker helper selection when a registry should stop using CWIC credentials. The command accepts the same explicit hosts and namespace pipelines as configure and preserves unrelated Docker settings and credentials.
+
+```bash
+cwic registry credential-helper unconfigure my-namespace.cwcr.io
+# Or remove every namespace returned by the Registry API.
+cwic registry namespace list | cwic registry credential-helper unconfigure
+```
+
+For native OIDC federation, configure a command that prints a raw JWT or a
+Kubernetes ExecCredential JSON with `status.token`:
+
+```bash
+cwic registry credential-helper configure acme.cwcr.io --oidc -- \
+  kubelogin get-token --oidc-issuer-url=https://issuer.example.com --oidc-client-id=CLIENT_ID
+```
+
+This mode requires no `cwic auth login`. The helper supplies username `oidc` and
+the command's token directly to Docker.  The command handles its own token 
+caching and must work without stdin.
+
+Relative executable paths such as `./token.sh` are saved as absolute paths based
+on the configuration command's working directory. Bare names such as `kubelogin`
+use `PATH` when the helper runs. Other arguments are unchanged; use absolute paths
+for file arguments.
+
+After configuration, use `docker pull` or `docker push` directly. The helper rejects
+OIDC credential `store` requests, so `docker login` cannot replace the command's identity.
+
+#### Registry command examples
 
 ```bash
 # Namespace lifecycle
@@ -848,9 +1039,9 @@ cwic registry namespace list | cwic registry namespace access revision list
 cwic registry namespace access revision list acme | cwic registry namespace access revision get
 cwic registry namespace access revision rollback acme 2 --wait
 
-# Configure Docker credentials for one or more namespaces
-cwic registry login acme
-cwic registry namespace list -o name | cwic registry login
+# Configure Docker's cwic credential helper for one or more namespaces
+cwic registry credential-helper configure acme.cwcr.io
+cwic registry namespace list | cwic registry credential-helper configure
 
 # Indexed manifest metadata (selectors are always explicit)
 cwic registry manifest list acme --include-untagged
@@ -883,7 +1074,7 @@ cwic registry tag list acme/team/app | cwic registry tag delete --yes
 cwic registry operation list acme | cwic registry operation get
 ```
 
-- Set `CWIC_REGISTRY_API_URL` or pass `--api-url` to use a non-production API endpoint.
+- Set `CWIC_API_URL` or pass `--api-url` to use a non-production API endpoint.
 - A `repository:tag@digest` reference selects the tag and uses the digest as a compare-and-match condition, so lookups and deletions fail safely if the tag has moved.
 - Prefer `-o name` for scripts; CWIC also understands its own headed table output when commands are connected directly with a pipe.
 
