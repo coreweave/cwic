@@ -260,6 +260,8 @@ cwic cwobject list
 
 ## Commands
 
+See the [command documentation](docs/README.md) for guides organized by command family.
+
 ### Authentication
 
 Manage your CoreWeave authentication credentials.
@@ -500,6 +502,8 @@ headers. JSON and YAML return one object for `create`, `get <ID>`, or `update <I
 `items` list for `get`.
 
 ### Cluster Management
+
+For resource-oriented cluster CRUD, public VPC management, and optional VPC provisioning during cluster creation, see [CKS command guide](docs/cks/README.md) and [network command guide](docs/network/README.md).
 
 **Features:**
 - Automatic kubeconfig generation
@@ -801,6 +805,8 @@ Job information includes:
 
 ### Object Storage (cwobject)
 
+See the [object storage command guide](docs/cwobject/README.md) for resource commands, output formats, pipelines, and authentication.
+
 Manage CoreWeave AI Object Storage resources using the S3-compatible API.
 
 #### Configuration
@@ -937,7 +943,7 @@ cwic cwobject policy delete --name <policy-name>
 Manage CoreWeave Container Registry resources. Registry commands use the active CWIC authentication token and support `table`, `wide`, `json`, `yaml`, and `name` output.
 List commands automatically retrieve every page, and commands that take targets support multiple arguments or newline-delimited stdin.
 
-See the [registry command guide](cmd/registry/README.md) for the complete command surface, reference syntax, credential-helper behavior, pipelines, batch operations, idempotent retries, and deletion/reclamation semantics.
+See the [registry command guide](docs/registry/README.md) for the complete command surface, reference syntax, credential-helper behavior, pipelines, batch operations, idempotent retries, and deletion/reclamation semantics.
 
 #### Docker credential helper
 
